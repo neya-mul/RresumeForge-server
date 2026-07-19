@@ -79,14 +79,61 @@ async function run() {
       "/api/resumes",
       async (req: Request, res: Response, next: NextFunction): Promise<any> => {
         try {
+          const {
+            search = "",
+            location = "",
+            skill = "",
+            page = "1",
+            limit = "10",
+          } = req.query as Record<string, string>;
+          // console.log("Incoming query:", { search, location, skill, page, limit }); // <-- add this
+
+
+          const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+          const limitNum = Math.max(parseInt(limit, 10) || 10, 1);
+
+          const filter: Record<string, any> = {};
+
+          // Free-text search across title, fullName, summary
+          if (search.trim()) {
+            const regex = new RegExp(search.trim(), "i");
+            filter.$or = [
+              { title: regex },
+              { fullName: regex },
+              { summary: regex },
+              { email: regex },
+            ];
+          }
+
+          // Location filter (partial match)
+          if (location.trim()) {
+            filter.location = new RegExp(location.trim(), "i");
+          }
+
+          // Skill filter (matches any skill in the array)
+          // Skill filter (matches any skill in the array)
+          if (skill.trim()) {
+            filter.skills = new RegExp(skill.trim(), "i");
+          }
+
+          const total = await resumeCollection.countDocuments(filter);
+          const totalPages = Math.max(Math.ceil(total / limitNum), 1);
+          const safePage = Math.min(pageNum, totalPages);
+
           const resumes = await resumeCollection
-            .find({})
+            .find(filter)
             .sort({ createdAt: -1 })
+            .skip((safePage - 1) * limitNum)
+            .limit(limitNum)
             .toArray();
 
           return res.status(200).json({
             success: true,
             count: resumes.length,
+            total,
+            totalPages,
+            page: safePage,
+            limit: limitNum,
             resumes,
           });
         } catch (error) {
