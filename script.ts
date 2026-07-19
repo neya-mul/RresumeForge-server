@@ -3,10 +3,11 @@ dotenv.config();
 import cors from "cors";
 import express, { NextFunction, Request, Response } from "express";
 import { MongoClient, ObjectId, ServerApiVersion } from "mongodb";
+import Groq from "groq-sdk";
 
 const uri = process.env.MONGO_URI as string;
 const port = Number(process.env.PORT) || 5000;
-
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 if (!uri) {
   throw new Error("MONGO_URI environment variable is missing!");
 }
@@ -143,32 +144,32 @@ async function run() {
     );
 
 
-// Resumes GET Endpoint (only the current user's resumes)
-app.get(
-  "/api/resumes/user/:userId",
-  async (req: Request, res: Response, next: NextFunction): Promise<any> => {
-    try {
-      const { userId } = req.params;
+    // Resumes GET Endpoint (only the current user's resumes)
+    app.get(
+      "/api/resumes/user/:userId",
+      async (req: Request, res: Response, next: NextFunction): Promise<any> => {
+        try {
+          const { userId } = req.params;
 
-      if (!userId) {
-        return res.status(400).json({ message: "userId is required." });
+          if (!userId) {
+            return res.status(400).json({ message: "userId is required." });
+          }
+
+          const resumes = await resumeCollection
+            .find({ userId })
+            .sort({ createdAt: -1 })
+            .toArray();
+
+          return res.status(200).json({
+            success: true,
+            count: resumes.length,
+            resumes,
+          });
+        } catch (error) {
+          next(error);
+        }
       }
-
-      const resumes = await resumeCollection
-        .find({ userId })
-        .sort({ createdAt: -1 })
-        .toArray();
-
-      return res.status(200).json({
-        success: true,
-        count: resumes.length,
-        resumes,
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-);
+    );
 
 
     // Resumes DELETE Endpoint
@@ -198,6 +199,164 @@ app.get(
         }
       }
     );
+
+
+
+    // Posts GET Endpoint (single, by id)
+    app.get("/api/posts/:id", async (req: Request, res: Response, next: NextFunction): Promise<any> => {
+      try {
+        const id = req.params.id as string;
+
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).json({ message: "Invalid post id." });
+        }
+
+        const post = await resumeCollection.findOne({ _id: new ObjectId(id) });
+
+        if (!post) {
+          return res.status(404).json({ message: "Post not found." });
+        }
+
+        return res.status(200).json({ success: true, post });
+      } catch (error) {
+        next(error);
+      }
+    }
+    );
+    // Resumes GET Endpoint (single, by id)
+    app.get(
+      "/api/resumes/:id",
+      async (req: Request, res: Response, next: NextFunction): Promise<any> => {
+        try {
+          const id = req.params.id as string;
+
+          if (!ObjectId.isValid(id)) {
+            return res.status(400).json({ message: "Invalid resume id." });
+          }
+
+          const resume = await resumeCollection.findOne({ _id: new ObjectId(id) });
+
+          if (!resume) {
+            return res.status(404).json({ message: "Resume not found." });
+          }
+
+          return res.status(200).json({ success: true, resume });
+        } catch (error) {
+          next(error);
+        }
+      }
+    );
+
+    // AI Suggestions Endpoint (Groq) — for resumes
+    app.post(
+      "/api/resumes/:id/ai-suggestions",
+      async (req: Request, res: Response, next: NextFunction): Promise<any> => {
+        try {
+          const id = req.params.id as string;
+
+          if (!ObjectId.isValid(id)) {
+            return res.status(400).json({ message: "Invalid resume id." });
+          }
+
+          const resume = await resumeCollection.findOne({ _id: new ObjectId(id) });
+
+          if (!resume) {
+            return res.status(404).json({ message: "Resume not found." });
+          }
+
+          const prompt = `You are an expert career coach and resume reviewer. Review the following resume and provide 3-5 concrete, actionable suggestions to improve it (impact, clarity, keyword targeting, formatting of bullet points, missing sections). Respond ONLY as a numbered list, no preamble.
+
+Full Name: ${resume.fullName}
+Location: ${resume.location}
+Summary: ${resume.summary}
+Skills: ${Array.isArray(resume.skills) ? resume.skills.join(", ") : resume.skills}
+Experience: ${JSON.stringify(resume.experience, null, 2)}
+Education: ${JSON.stringify(resume.education, null, 2)}`;
+
+          const completion = await groq.chat.completions.create({
+            model: "llama-3.3-70b-versatile",
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.4,
+            max_tokens: 700,
+          });
+
+          const suggestions = completion.choices[0]?.message?.content ?? "";
+
+          return res.status(200).json({
+            success: true,
+            resumeId: id,
+            suggestions,
+          });
+        } catch (error) {
+          next(error);
+        }
+      }
+    );
+
+
+
+
+
+
+    // Chat Endpoint (Groq) — conversational Q&A about a resume
+app.post(
+  "/api/resumes/:id/chat",
+  async (req: Request, res: Response, next: NextFunction): Promise<any> => {
+    try {
+      const id = req.params.id as string;
+      const { message, history } = req.body as {
+        message: string;
+        history?: { role: "user" | "assistant"; content: string }[];
+      };
+
+      if (!ObjectId.isValid(id)) {
+        return res.status(400).json({ message: "Invalid resume id." });
+      }
+
+      if (!message || !message.trim()) {
+        return res.status(400).json({ message: "message is required." });
+      }
+
+      const resume = await resumeCollection.findOne({ _id: new ObjectId(id) });
+
+      if (!resume) {
+        return res.status(404).json({ message: "Resume not found." });
+      }
+
+      const systemPrompt = `You are a helpful assistant answering questions about a specific resume/candidate. Only use the information below — if something isn't covered, say you don't have that information rather than guessing. Keep answers concise and conversational.
+
+Full Name: ${resume.fullName}
+Title: ${resume.title}
+Location: ${resume.location}
+Email: ${resume.email}
+Phone: ${resume.phoneNumber}
+Website: ${resume.website ?? "N/A"}
+Summary: ${resume.summary}
+Skills: ${Array.isArray(resume.skills) ? resume.skills.join(", ") : resume.skills}
+Experience: ${JSON.stringify(resume.experience, null, 2)}
+Education: ${JSON.stringify(resume.education, null, 2)}`;
+
+      const messages = [
+        { role: "system" as const, content: systemPrompt },
+        ...(history ?? []).slice(-10), // keep last 10 turns to bound token usage
+        { role: "user" as const, content: message },
+      ];
+
+      const completion = await groq.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages,
+        temperature: 0.5,
+        max_tokens: 500,
+      });
+
+      const reply = completion.choices[0]?.message?.content ?? "";
+
+      return res.status(200).json({ success: true, reply });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
     // Resumes GET Endpoint (single, by id) — useful for a detail page later
     // app.get(
