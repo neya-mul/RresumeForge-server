@@ -34,9 +34,9 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     // 1. Establish database connection first
-    await client.connect();
-    await client.db("admin").command({ ping: 1 });
-    console.log("🚀 Pinged deployment. Successfully connected to MongoDB!");
+    // await client.connect();
+    // await client.db("admin").command({ ping: 1 });
+    // console.log("🚀 Pinged deployment. Successfully connected to MongoDB!");
 
     const db = client.db('ResumeForge');
 
@@ -452,20 +452,20 @@ Education: ${JSON.stringify(resume.education, null, 2)}`;
     // 4. BIND LISTEN ENGINE INTERFACE
     // ============================================================
     app.listen(port, () => {
-      console.log(`Server executing live on node pipeline: http://localhost:${port}`);
+      // console.log(`Server executing live on node pipeline: http://localhost:${port}`);
     });
 
   } catch (initError) {
-    console.error("Fatal Cluster Initializer Abort:", initError);
-    process.exit(1);
+    // console.error("Fatal Cluster Initializer Abort:", initError);
+    // process.exit(1);
   }
 }
 
 // Global process monitoring loop for graceful cleanup shutdowns
 process.on("SIGINT", async () => {
-  console.log("\nIntercepted termination vector. Disconnecting driver gracefully...");
-  await client.close();
-  process.exit(0);
+  // console.log("\nIntercepted termination vector. Disconnecting driver gracefully...");
+  // await client.close();
+  // process.exit(0);
 });
 
 // Fire connection lifecycle entrypoint
