@@ -142,6 +142,63 @@ async function run() {
       }
     );
 
+
+// Resumes GET Endpoint (only the current user's resumes)
+app.get(
+  "/api/resumes/user/:userId",
+  async (req: Request, res: Response, next: NextFunction): Promise<any> => {
+    try {
+      const { userId } = req.params;
+
+      if (!userId) {
+        return res.status(400).json({ message: "userId is required." });
+      }
+
+      const resumes = await resumeCollection
+        .find({ userId })
+        .sort({ createdAt: -1 })
+        .toArray();
+
+      return res.status(200).json({
+        success: true,
+        count: resumes.length,
+        resumes,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+
+    // Resumes DELETE Endpoint
+    app.delete(
+      "/api/resumes/:id",
+      async (req: Request, res: Response, next: NextFunction): Promise<any> => {
+        try {
+          const id = req.params.id as string;
+
+          if (!ObjectId.isValid(id)) {
+            return res.status(400).json({ message: "Invalid resume id." });
+          }
+
+          const result = await resumeCollection.deleteOne({ _id: new ObjectId(id) });
+
+          if (result.deletedCount === 0) {
+            return res.status(404).json({ message: "Resume not found." });
+          }
+
+          return res.status(200).json({
+            success: true,
+            message: "Resume deleted successfully.",
+            deletedId: id,
+          });
+        } catch (error) {
+          next(error);
+        }
+      }
+    );
+
     // Resumes GET Endpoint (single, by id) — useful for a detail page later
     // app.get(
     //   "/api/resumes/:id",
