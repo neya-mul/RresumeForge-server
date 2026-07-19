@@ -38,7 +38,7 @@ async function run() {
     console.log("🚀 Pinged deployment. Successfully connected to MongoDB!");
 
     const db = client.db('ResumeForge');
-    
+
     // Explicit Collection Definitions
     const resumeCollection = db.collection('resumes');
     const postCollection = db.collection('posts');
@@ -46,7 +46,7 @@ async function run() {
     // ============================================================
     // 2. REGISTER API ENDPOINTS (Before 404 Fallback handlers)
     // ============================================================
-    
+
     // Resumes POST Endpoint
     app.post("/api/resumes", async (req: Request, res: Response, next: NextFunction): Promise<any> => {
       try {
@@ -73,6 +73,51 @@ async function run() {
         next(error);
       }
     });
+
+    // Resumes GET Endpoint (all resumes)
+    app.get(
+      "/api/resumes",
+      async (req: Request, res: Response, next: NextFunction): Promise<any> => {
+        try {
+          const resumes = await resumeCollection
+            .find({})
+            .sort({ createdAt: -1 })
+            .toArray();
+
+          return res.status(200).json({
+            success: true,
+            count: resumes.length,
+            resumes,
+          });
+        } catch (error) {
+          next(error);
+        }
+      }
+    );
+
+    // Resumes GET Endpoint (single, by id) — useful for a detail page later
+    // app.get(
+    //   "/api/resumes/:id",
+    //   async (req: Request, res: Response, next: NextFunction): Promise<any> => {
+    //     try {
+    //       const { id } = req.params;
+
+    //       if (!ObjectId.isValid(id)) {
+    //         return res.status(400).json({ message: "Invalid resume id." });
+    //       }
+
+    //       const resume = await resumeCollection.findOne({ _id: new ObjectId(id) });
+
+    //       if (!resume) {
+    //         return res.status(404).json({ message: "Resume not found." });
+    //       }
+
+    //       return res.status(200).json({ success: true, resume });
+    //     } catch (error) {
+    //       next(error);
+    //     }
+    //   }
+    // );
 
     // Posts POST Endpoint
     app.post("/api/posts", async (req: Request, res: Response, next: NextFunction): Promise<any> => {
@@ -101,10 +146,31 @@ async function run() {
       }
     });
 
+    // Posts GET Endpoint
+    app.get(
+      "/api/posts",
+      async (req: Request, res: Response, next: NextFunction): Promise<any> => {
+        try {
+          const posts = await postCollection
+            .find({})
+            .sort({ createdAt: -1 })
+            .toArray();
+
+          return res.status(200).json({
+            success: true,
+            count: posts.length,
+            posts,
+          });
+        } catch (error) {
+          next(error);
+        }
+      }
+    );
+
     // ============================================================
     // 3. REGISTER GLOBAL MIDDLEWARE PIPELINE ROUTING
     // ============================================================
-    
+
     // Catch-all 404 Router (Must execute after custom endpoint matchers)
     app.use((req: Request, res: Response) => {
       res.status(404).json({ message: "Requested operational route fallback not found." });
